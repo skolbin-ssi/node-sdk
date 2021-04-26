@@ -130,7 +130,7 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
     let result: any;
 
     if (
-      builder.entity instanceof Customer &&
+      (builder.entity instanceof Customer || ((builder.entity as any) as Function).name === 'Customer') &&
       builder.transactionType === TransactionType.Search
     ) {
       result = response.results.map((customer: object) =>
@@ -141,7 +141,7 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
     }
 
     if (
-      builder.entity instanceof RecurringPaymentMethod &&
+      (builder.entity instanceof RecurringPaymentMethod || ((builder.entity as any) as Function).name === 'RecurringPaymentMethod') &&
       builder.transactionType === TransactionType.Search
     ) {
       result = response.results.map((paymentMethod: object) =>
@@ -152,7 +152,7 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
     }
 
     if (
-      builder.entity instanceof Schedule &&
+      (builder.entity instanceof Schedule || ((builder.entity as any) as Function).name === 'Schedule') &&
       builder.transactionType === TransactionType.Search
     ) {
       result = response.results.map((schedule: object) =>
@@ -435,6 +435,10 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
 
   protected buildDate(request: any, name: string, date: Date, force = false) {
     const getDateValue = (d: Date) => {
+      if (typeof(date) === 'string' && (date as string).length === 8) {
+        return d;
+      }
+
       const day = StringUtils.leftPad(d.getUTCDate().toString(), 2, "0");
       const month = StringUtils.leftPad(
         (d.getUTCMonth() + 1).toString(),
@@ -473,10 +477,10 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
       builder.transactionType === TransactionType.Delete ||
       builder.transactionType === TransactionType.Edit
     ) {
-      suffix = "/" + builder.entity.key;
+      suffix = "/" + (builder.entity as any).key;
     }
 
-    if (builder.entity instanceof Customer) {
+    if (builder.entity instanceof Customer || ((builder.entity as any) as Function).name === 'Customer') {
       return (
         (builder.transactionType === TransactionType.Search
           ? "searchCustomers"
@@ -484,13 +488,13 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
       );
     }
 
-    if (builder.entity instanceof RecurringPaymentMethod) {
+    if (builder.entity instanceof RecurringPaymentMethod || ((builder.entity as any) as Function).name === 'RecurringPaymentMethod') {
       let paymentMethod = "";
       if (builder.transactionType === TransactionType.Create) {
         paymentMethod =
-          builder.entity.paymentMethod instanceof Credit ? "CreditCard" : "ACH";
+          (builder.entity as any).paymentMethod instanceof Credit ? "CreditCard" : "ACH";
       } else if (builder.transactionType === TransactionType.Edit) {
-        paymentMethod = builder.entity.paymentType.replace(" ", "");
+        paymentMethod = (builder.entity as any).paymentType.replace(" ", "");
       }
 
       return (
@@ -502,7 +506,7 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
       );
     }
 
-    if (builder.entity instanceof Schedule) {
+    if (builder.entity instanceof Schedule || ((builder.entity as any) as Function).name === 'Schedule') {
       return (
         (builder.transactionType === TransactionType.Search
           ? "searchSchedules"
@@ -573,17 +577,17 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
 
     if (response.subtotalAmount) {
       const subtotal = response.subtotalAmount;
-      schedule.amount = subtotal.value;
+      schedule.amount = subtotal.value.slice(0, -2) + '.' + subtotal.value.slice(-2); // add the decimal back in
       schedule.currency = subtotal.currency;
     }
 
     if (response.taxAmount) {
       const taxAmount = response.taxAmount;
-      schedule.taxAmount = taxAmount.value;
+      schedule.taxAmount = taxAmount.value.slice(0, -2) + '.' + taxAmount.value.slice(-2); // add the decimal back in
     }
 
     schedule.deviceId = response.deviceId;
-    schedule.startDate = new Date(response.startDate);
+    schedule.startDate = response.startDate === "" ? null : response.startDate;
     schedule.paymentSchedule = ((value: string) => {
       switch (value) {
         case "Last":
@@ -595,7 +599,7 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
       }
     })(response.processingDateInfo);
     schedule.frequency = response.frequency;
-    schedule.endDate = new Date(response.endDate);
+    schedule.endDate = response.endDate === "" ? null : response.endDate;
     schedule.reprocessingCount = response.reprocessingCount;
     schedule.emailReceipt = response.emailReceipt;
     schedule.emailNotification = ((value: string) => {
@@ -609,13 +613,13 @@ export class PayPlanConnector extends RestGateway implements IRecurringService {
     schedule.poNumber = response.poNumber;
     schedule.description = response.description;
     // statusSetDate
-    schedule.nextProcessingDate = new Date(response.nextProcessingDate);
+    schedule.nextProcessingDate = response.nextProcessingDate === "" ? null : response.nextProcessingDate;
     // previousProcessingDate
     // approvedTransactionCount
     // failureCount
     // totalApprovedAmountToDate
     // numberOfPaymentsRemaining
-    schedule.cancellationDate = new Date(response.cancellationDate);
+    schedule.cancellationDate = response.cancellationDate === "" ? null : response.cancellationDate;
     // creationDate
     // lastChangeDate
     schedule.hasStarted = response.scheduleStarted as boolean;
