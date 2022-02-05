@@ -615,6 +615,16 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
       if (trb.transactionId) {
         subElement(transaction, "TxnId").append(cData(trb.transactionId));
       }
+
+      if (trb.searchCriteria) {
+        const criteriaNode = element("Criteria");
+
+        for (const property in trb.searchCriteria) {
+          subElement(criteriaNode, property).append(cData(trb.searchCriteria[property]));
+        }
+
+        transaction.append(criteriaNode);
+      }
     }
     return this.doTransaction(this.buildEnvelope(transaction)).then(
       (response) => this.mapReportResponse(response, builder),
@@ -897,6 +907,8 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
         return "ReportActivity";
       case ReportType.TransactionDetail:
         return "ReportTxnDetail";
+      case ReportType.FindTransactions:
+        return "FindTransactions";
       default:
         throw new UnsupportedTransactionError();
     }
@@ -975,6 +987,11 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
       result.giftCard.pin = cardData.findtext(".//PIN");
     }
 
+    if (root.find(".//BatchId")) {
+      result.batchId = root.findtext(".//BatchId");
+      result.batchSeqNbr = root.findtext(".//BatchSeqNbr");
+    }
+
     return result;
   }
 
@@ -993,6 +1010,10 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
       result = doc
         .findall(".//Details")
         .map(this.hydrateTransactionSummary.bind(this));
+    } if (builder.reportType === ReportType.FindTransactions) {
+      result = doc
+      .findall(".//Transactions")
+      .map(this.hydrateTransactionSummary.bind(this));
     } else if (builder.reportType === ReportType.TransactionDetail) {
       result = this.hydrateTransactionSummary(doc);
     }
@@ -1290,29 +1311,70 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
   protected hydrateTransactionSummary(root: Element): TransactionSummary {
     const result = new TransactionSummary();
 
+    result.accountDataSource = root.findtext(".//AcctDataSrc");
     result.amount = root.findtext(".//Amt");
     result.authorizedAmount = root.findtext(".//AuthAmt");
     result.authCode = root.findtext(".//AuthCode");
+    result.batchCloseDate = new Date(root.findtext(".//BatchCloseDT"));
+    result.batchSequenceNumber = root.findtext(".//BatchSeqNbr");
+    result.cardSwiped = root.findtext(".//CardSwiped");
+    result.cardType = root.findtext(".//CardType");
+    result.clerkId = root.findtext(".//ClerkID");
     result.clientTransactionId = root.findtext(".//ClientTxnId");
+    result.convenienceAmt = root.findtext(".//ConvenienceAmtInfo");
     result.deviceId = root.findtext(".//DeviceId");
+    result.gratuityAmount = root.findtext(".//GratuityAmtInfo");
     result.issuerResponseCode = this.normalizeResponse(
       root.findtext(".//IssuerRspCode"),
     );
     result.issuerResponseMessage = root.findtext(".//IssuerRspText");
-    result.maskedCardNumber = root.findtext(".//MaskedCardNbr");
-    result.originalTransactionId = root.findtext(".//OriginalGatewayTxnId");
+    result.issuerTransactionId = root.findtext(".//IssTxnId");
+    result.maskedCardNumber = root.findtext(".//MaskedCardNbr");    
     result.gatewayResponseCode = this.normalizeResponse(
       root.findtext(".//GatewayRspCode"),
     );
     result.gatewayResponseMessage = root.findtext(".//GatewayRspMsg");
+    result.originalTransactionId = root.findtext(".//OriginalGatewayTxnId");
+    result.paymentType = root.findtext(".//PaymentType");
+    result.poNumber = root.findtext(".//CardHolderPONbr");    
     result.referenceNumber = root.findtext(".//RefNbr");
+    result.responseDate = new Date(root.findtext(".//RspDT"));
     result.serviceName = root.findtext(".//ServiceName");
     result.settlementAmount = root.findtext(".//SettlementAmt");
+    result.shippingAmt = root.findtext(".//ShippingAmtInfo");
+    result.siteTrace = root.findtext(".//SiteTrace");
     result.status = root.findtext(".//TxnStatus");
+    result.taxAmount = root.findtext(".//TaxAmtInfo");
+    result.taxType = root.findtext(".//TaxType");
     result.transactionDate = new Date(root.findtext(".//TxnUtcDT"));
     result.transactionId = root.findtext(".//GatewayTxnId");
-    result.convenienceAmt = root.findtext(".//ConvenienceAmtInfo");
-    result.shippingAmt = root.findtext(".//ShippingAmtInfo");
+    result.username = root.findtext(".//UserName");
+
+    result.description = root.findtext(".//Description");
+    result.invoiceNumber = root.findtext(".//InvoiceNbr");
+    result.customerId = root.findtext(".//CustomerID");
+    result.uniqueDeviceId = root.findtext(".//UniqueDeviceId");
+    result.transactionDescriptor = root.findtext(".//TxnDescriptor");
+    result.giftCurrency = root.findtext(".//GiftCurrency");
+    result.maskedAlias = root.findtext(".//GiftMaskedAlias");
+    result.paymentMethodKey = root.findtext(".//PaymentMethodKey");
+    result.scheduleId = root.findtext(".//ScheduleID");
+    result.oneTimePayment = root.findtext(".//OneTime");
+    result.recurringDataCode = root.findtext(".//RecurringDataCode");
+    result.surchargeAmount = root.findtext(".//SurchargeAmtInfo");
+    result.fraudRuleInfo = root.findtext(".//FraudInfoRule");
+    result.repeatCount = root.findtext(".//RepeatCount");
+    result.emvChipCondition = root.findtext(".//EMVChipCondition");
+    result.hasEmvTags = root.findtext(".//HasEMVTag");
+    result.hasEcomPaymentData = root.findtext(".//HasEComPaymentData");
+    result.cavvResponseCode = root.findtext(".//CAVVResultCode");
+    result.tokenPanLastFour = root.findtext(".//TokenPANLast4");
+    result.companyName = root.findtext(".//Company");
+    result.customerFirstName = root.findtext(".//CustomerFirstname");
+    result.customerLastName = root.findtext(".//CustomerLastname");
+    result.debtRepaymentIndicator = root.findtext(".//DebtRepaymentIndicator");
+    result.captureAmount = root.findtext(".//CaptureAmtInfo");
+    result.fullyCaptured = root.findtext(".//FullyCapturedInd");
 
     return result;
   }
