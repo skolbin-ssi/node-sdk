@@ -45,6 +45,8 @@ import {
   TransactionSummary,
   TransactionType,
   UnsupportedTransactionError,
+  MobilePaymentMethodType,
+  PaymentDataSourceType,
 } from "../";
 import { validateAmount, validateInput } from "../Utils/InputValidation";
 import { XmlGateway } from "./XmlGateway";
@@ -59,6 +61,7 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
   public secretApiKey: string;
   public developerId: string;
   public versionNumber: string;
+  public sdkNameVersion: string;
   public supportsHostedPayments = false;
 
   public processAuthorization(
@@ -237,6 +240,28 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
         cData(card.cardPresent ? "Y" : "N"),
       );
       block1.append(cardData);
+
+      if (card instanceof CreditCardData) {
+        const creditCardData = card as CreditCardData;
+
+        //  WalletData Element
+        if (
+          (
+            creditCardData.mobileType == MobilePaymentMethodType.APPLEPAY
+            || creditCardData.mobileType == MobilePaymentMethodType.GOOGLEPAY
+          )
+          && typeof creditCardData.paymentSource != "undefined"
+          && this.isAppleOrGooglePay(creditCardData.paymentSource)
+        ) {            
+          const walletData = subElement(block1, "WalletData");
+          subElement(walletData, "PaymentSource").append(cData(creditCardData.paymentSource.trim()));
+
+          if (typeof creditCardData.mobileType != "undefined") {
+            subElement(walletData, "DigitalPaymentToken").append(cData(creditCardData.token));
+            block1.remove(cardData);
+          }
+        }
+      }
 
       if (builder.transactionModifier === TransactionModifier.Recurring) {
         const recurring = subElement(block1, "RecurringData");
@@ -672,6 +697,12 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
     }
     if (clientTransactionId) {
       subElement(header, "ClientTxnId").append(cData(clientTransactionId));
+    }
+    if (this.sdkNameVersion) {      
+      subElement(header, "SDKNameVersion").append(cData(this.sdkNameVersion));
+    }
+    else{      
+      subElement(header, "SDKNameVersion").append(cData("nodejs-version:" + process.env.npm_package_version));
     }
 
     // transaction
@@ -1390,5 +1421,13 @@ export class PorticoConnector extends XmlGateway implements IPaymentGateway {
     }
 
     return false;
+  }
+
+  protected isAppleOrGooglePay(paymentDataSource: string) {
+    return paymentDataSource == PaymentDataSourceType.APPLEPAY
+      || paymentDataSource == PaymentDataSourceType.APPLEPAYAPP
+      || paymentDataSource == PaymentDataSourceType.APPLEPAYWEB
+      || paymentDataSource == PaymentDataSourceType.GOOGLEPAYAPP
+      || paymentDataSource == PaymentDataSourceType.GOOGLEPAYWEB;
   }
 }
