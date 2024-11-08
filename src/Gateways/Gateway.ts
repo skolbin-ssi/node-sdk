@@ -3,12 +3,17 @@ import * as url from "url";
 
 import { IDictionary } from "../Builders";
 import { request } from "./https-wrapper";
+import { GatewayResponse } from "./GatewayResponse";
+import { Environment, IRequestLogger } from "../../src";
 
 export abstract class Gateway {
   public headers: IDictionary<string>;
   public timeout: number;
   public serviceUrl: string;
-  private contentType: string;
+  protected contentType: string;
+  public maskedRequestData: Record<string, string>;
+  public requestLogger: IRequestLogger;
+  public environment: Environment;
 
   public constructor(contentType: string) {
     this.contentType = contentType;
@@ -16,12 +21,13 @@ export abstract class Gateway {
     this.headers["Content-Type"] = this.contentType;
   }
 
-  public sendRequest(
+  public async sendRequest(
     httpMethod: string,
     endpoint: string,
+    requestId: number,
     data?: string,
     queryStringParams?: IDictionary<string>,
-  ) {
+  ): Promise<GatewayResponse> {
     const uri = url.parse(this.serviceUrl);
     const queryString = this.buildQueryString(queryStringParams);
     const options: RequestOptions = {
@@ -37,7 +43,38 @@ export abstract class Gateway {
       options.headers["Content-Length"] = data.length;
     }
 
-    return request(data, options);
+    if (this.requestLogger) {
+      const dataLogged =
+        data &&
+        this.maskedRequestData &&
+        this.environment === Environment.Production
+          ? this.maskSensitiveData(data)
+          : data;
+
+      this.requestLogger.requestSent(
+        httpMethod,
+        this.serviceUrl + endpoint + (queryString || ""),
+        requestId,
+        this.headers,
+        dataLogged,
+      );
+    }
+    try {
+      const response = await request(data, options);
+
+      return response;
+    } catch (e) {
+      if (this.requestLogger) {
+        this.requestLogger.responseError(e, requestId, e.headers);
+      }
+
+      throw e;
+    }
+  }
+
+  maskSensitiveData(data: string) {
+    // overriden in XmlGateway and RestGateway
+    data;
   }
 
   protected buildQueryString(queryStringParams?: IDictionary<string>) {
@@ -46,7 +83,7 @@ export abstract class Gateway {
     }
     const params: string[] = [];
     for (const param in queryStringParams) {
-      if (queryStringParams.hasOwnProperty(param)) {
+      if (queryStringParams.hasOwnProperty(param) && queryStringParams[param]) {
         params.push(
           `${encodeURIComponent(param)}=${encodeURIComponent(
             queryStringParams[param],

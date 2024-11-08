@@ -2,16 +2,26 @@ import {
   Address,
   AddressType,
   AliasAction,
+  Customer,
+  DccRateData,
+  EBTCardData,
   EcommerceInfo,
+  EmvLastChipRead,
   GiftCard,
   HostedPaymentData,
   InquiryType,
   IPaymentMethod,
+  MerchantCategory,
+  OrderDetails,
   PaymentMethod,
   PaymentMethodType,
+  PaymentMethodUsageMode,
+  PhoneNumber,
+  PhoneNumberType,
   RecurringSequence,
   RecurringType,
   ServicesContainer,
+  StoredCredential,
   StoredCredentialInitiator,
   Transaction,
   TransactionModifier,
@@ -28,12 +38,14 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
   public allowPartialAuth: boolean;
   public amount: string | number;
   public authAmount: string | number;
+  public amountEstimated: boolean;
   public balanceInquiryType: InquiryType;
   public billingAddress: Address;
   public cardBrandTransactionId: string;
   public cashBackAmount: string | number;
   public clientTransactionId: string;
   public currency: string;
+  public customerData: Customer;
   public customerId: string;
   public customerIpAddress: string;
   public cvn: string;
@@ -49,15 +61,35 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
   public offlineAuthCode: string;
   public oneTimePayment: boolean;
   public orderId: string;
+  public paymentMethodUsageMode: PaymentMethodUsageMode;
+  public homePhone: PhoneNumber;
+  public workPhone: PhoneNumber;
+  public shippingPhone: PhoneNumber;
+  public shippingAmount: string | number;
+  public orderDetails: OrderDetails;
   public productId: string;
   public recurringSequence: RecurringSequence;
   public recurringType: RecurringType;
   public requestMultiUseToken: boolean;
+  /**
+   * Used in conjunction with requestMultiUseToken to request a unique token
+   * For use with Portico Gateway only
+   *
+   * @internal
+   * @var bool
+   */
+  public requestUniqueToken: boolean;
   public replacementCard: GiftCard;
   public scheduleId: string;
   public shippingAddress: Address;
   public timestamp: string;
+  public dccRateData: DccRateData;
   public transactionInitiator: StoredCredentialInitiator;
+  public idempotencyKey: string;
+  public emvChipCondition: EmvLastChipRead;
+  public storedCredential: StoredCredential;
+  public productData: Record<string, string>[];
+  public merchantCategory: MerchantCategory;
 
   public constructor(type: number, paymentMethod?: IPaymentMethod) {
     super(type, paymentMethod);
@@ -72,10 +104,10 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
    *
    * @returns Promise<Transaction>
    */
-  public execute(): Promise<Transaction> {
+  public execute(configName: string = "default"): Promise<Transaction> {
     super.execute();
     return ServicesContainer.instance()
-      .getClient()
+      .getClient(configName)
       .processAuthorization(this);
   }
 
@@ -189,6 +221,42 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
       .of("paymentMethodType", PaymentMethodType.ACH)
       .check("billingAddress")
       .isNotNull();
+
+    this.validations
+      .of("transactionType", TransactionType.Auth)
+      .with("transactionModifier", TransactionModifier.AlternativePaymentMethod)
+      .check("amount")
+      .isNotNull()
+      .check("currency")
+      .isNotNull()
+      .check("paymentMethod")
+      .isNotNull()
+      .check("paymentMethod.returnUrl")
+      .isNotNull()
+      .check("paymentMethod.statusUpdateUrl")
+      .isNotNull()
+      .check("paymentMethod.country")
+      .isNotNull()
+      .check("paymentMethod.accountHolderName")
+      .isNotNull();
+
+    this.validations
+      .of("transactionType", TransactionType.Sale)
+      .with("transactionModifier", TransactionModifier.AlternativePaymentMethod)
+      .check("amount")
+      .isNotNull()
+      .check("currency")
+      .isNotNull()
+      .check("paymentMethod")
+      .isNotNull()
+      .check("paymentMethod.returnUrl")
+      .isNotNull()
+      .check("paymentMethod.statusUpdateUrl")
+      .isNotNull()
+      .check("paymentMethod.country")
+      .isNotNull()
+      .check("paymentMethod.accountHolderName")
+      .isNotNull();
   }
 
   /**
@@ -291,7 +359,10 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
   /**
    * Sets Credential on File fields
    */
-  public withCardBrandStorage(transactionInitiator: StoredCredentialInitiator, value?: string) {
+  public withCardBrandStorage(
+    transactionInitiator: StoredCredentialInitiator,
+    value?: string,
+  ) {
     this.transactionInitiator = transactionInitiator;
     if (value !== undefined) {
       this.cardBrandTransactionId = value;
@@ -342,11 +413,13 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
     }
 
     if (!(this.paymentMethod instanceof TransactionReference)) {
-      this.paymentMethod = (new TransactionReference() as IPaymentMethod) as PaymentMethod;
+      this.paymentMethod =
+        new TransactionReference() as IPaymentMethod as PaymentMethod;
     }
 
-    ((this
-      .paymentMethod as IPaymentMethod) as TransactionReference).clientTransactionId = clientTransactionId;
+    (
+      this.paymentMethod as IPaymentMethod as TransactionReference
+    ).clientTransactionId = clientTransactionId;
     return this;
   }
 
@@ -362,6 +435,22 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
   public withCurrency(currency?: string) {
     if (currency !== undefined) {
       this.currency = currency;
+    }
+    return this;
+  }
+
+  /**
+   * Sets the transaction's currency; where applicable.
+   *
+   * The formatting for the supplied value will currently depend on
+   * the configured gateway's requirements.
+   *
+   * @param currency The currency
+   * @returns AuthorizationBuilder
+   */
+  public withCustomerData(customerData: Customer) {
+    if (customerData !== undefined) {
+      this.customerData = customerData;
     }
     return this;
   }
@@ -599,6 +688,17 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
     return this;
   }
 
+  withShippingAmount(shippingAmount: string | number) {
+    this.shippingAmount = shippingAmount;
+    return this;
+  }
+
+  withOrderDetails(orderDetails: OrderDetails) {
+    this.orderDetails = orderDetails;
+
+    return this;
+  }
+
   /**
    * Sets the transaction's product ID; where applicable.
    *
@@ -644,10 +744,22 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
    * @param requestMultiUseToken The request flag
    * @returns AuthorizationBuilder
    */
-  public withRequestMultiUseToken(requestMultiUseToken?: boolean) {
+  public withRequestMultiUseToken(
+    requestMultiUseToken?: boolean,
+    requestUniqueToken: boolean = false,
+  ): AuthorizationBuilder {
     if (requestMultiUseToken !== undefined) {
       this.requestMultiUseToken = requestMultiUseToken;
     }
+    this.requestUniqueToken = requestUniqueToken;
+    return this;
+  }
+
+  public withPaymentMethodUsageMode(
+    paymentMethodUsageMode: PaymentMethodUsageMode,
+  ) {
+    this.paymentMethodUsageMode = paymentMethodUsageMode;
+
     return this;
   }
 
@@ -700,6 +812,99 @@ export class AuthorizationBuilder extends TransactionBuilder<Transaction> {
     if (timestamp !== undefined) {
       this.timestamp = timestamp;
     }
+
+    return this;
+  }
+
+  public withPaymentMethod(paymentMethod?: IPaymentMethod) {
+    if (paymentMethod !== undefined) {
+      this.paymentMethod = paymentMethod as PaymentMethod;
+    }
+    if (
+      this.paymentMethod instanceof EBTCardData &&
+      this.paymentMethod.serialNumber !== null
+    ) {
+      this.transactionModifier = TransactionModifier.Voucher;
+    }
+    return this;
+  }
+
+  public withProductData(productData: Record<string, string>[]) {
+    this.productData = productData;
+
+    return this;
+  }
+
+  public withPhoneNumber(
+    phoneCountryCode: string,
+    value: string,
+    phoneNumberType: PhoneNumberType,
+  ) {
+    const phoneNumber = new PhoneNumber(
+      phoneCountryCode,
+      value,
+      phoneNumberType,
+    );
+    switch (phoneNumberType) {
+      case PhoneNumberType.HOME:
+        this.homePhone = phoneNumber;
+        break;
+      case PhoneNumberType.WORK:
+        this.workPhone = phoneNumber;
+        break;
+      case PhoneNumberType.SHIPPING:
+        this.shippingPhone = phoneNumber;
+        break;
+    }
+    return this;
+  }
+
+  public withIdempotencyKey(idempotencyKey?: string) {
+    if (idempotencyKey !== undefined) {
+      this.idempotencyKey = idempotencyKey;
+    }
+    return this;
+  }
+
+  public withMultiCapture(multiCapture: boolean = false) {
+    this.multiCapture = multiCapture;
+    return this;
+  }
+
+  public withStoredCredentials(storedCredential: StoredCredential) {
+    this.storedCredential = storedCredential;
+    return this;
+  }
+
+  public withChipCondition(value: EmvLastChipRead) {
+    this.emvChipCondition = value;
+    return this;
+  }
+
+  public withTagData(value: string) {
+    this.tagData = value;
+    return this;
+  }
+
+  public withAmountEstimated(value: boolean) {
+    this.amountEstimated = value;
+    return this;
+  }
+
+  public withMerchantCategory(merchantCategory: MerchantCategory) {
+    this.merchantCategory = merchantCategory;
+    return this;
+  }
+
+  /**
+   * Set the request dccRateData
+   *
+   * @param DccRateData dccRateData
+   *
+   * @return AuthorizationBuilder
+   */
+  public withDccRateData(value: DccRateData) {
+    this.dccRateData = value;
     return this;
   }
 }

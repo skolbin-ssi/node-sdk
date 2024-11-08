@@ -1,6 +1,12 @@
 import {
+  DccRateData,
+  DisputeDocument,
+  LodgingData,
+  PaymentMethod,
+  PaymentMethodUsageMode,
   ReasonCode,
   ServicesContainer,
+  StoredCredentialSequence,
   TaxType,
   Transaction,
   TransactionModifier,
@@ -8,35 +14,48 @@ import {
   TransactionType,
 } from "../";
 import { TransactionBuilder } from "./TransactionBuilder";
+import { CommercialData } from "../Entities/CommercialData";
 
 export class ManagementBuilder extends TransactionBuilder<Transaction> {
-  public amount: string | number;
+  public amount: string | number | null;
   public authAmount: string | number;
+  public currency: string;
+  public commercialData?: CommercialData;
+  public description: string;
+  public gratuity: string | number | null;
+  public lodgingData: LodgingData;
+  public poNumber: string;
+  public reasonCode?: ReasonCode;
+  public taxAmount: string | number;
+  public taxType: TaxType;
+  public cardType?: string;
+
+  public constructor(type: number, paymentMethod?: PaymentMethod) {
+    super(type, paymentMethod);
+    this.supplementaryData = {};
+  }
+
   public get authorizationCode() {
     if (this.paymentMethod instanceof TransactionReference) {
       return this.paymentMethod.authCode;
     }
     return undefined;
   }
+
   public get clientTransactionId() {
     if (this.paymentMethod instanceof TransactionReference) {
       return this.paymentMethod.clientTransactionId;
     }
     return undefined;
   }
-  public currency: string;
-  public description: string;
-  public gratuity: string | number;
+
   public get orderId() {
     if (this.paymentMethod instanceof TransactionReference) {
       return this.paymentMethod.orderId;
     }
     return undefined;
   }
-  public poNumber: string;
-  public reasonCode?: ReasonCode;
-  public taxAmount: string | number;
-  public taxType: TaxType;
+
   public get transactionId() {
     if (this.paymentMethod instanceof TransactionReference) {
       return this.paymentMethod.transactionId;
@@ -44,48 +63,16 @@ export class ManagementBuilder extends TransactionBuilder<Transaction> {
     return undefined;
   }
 
-  public constructor(type: number) {
-    super(type);
-  }
-
   /**
    * Executes the builder against the gateway.
    *
    * @returns Promise<Transaction>
    */
-  public execute(): Promise<Transaction> {
+  public execute(configName: string = "default"): Promise<Transaction> {
     super.execute();
     return ServicesContainer.instance()
-      .getClient()
+      .getClient(configName)
       .manageTransaction(this);
-  }
-
-  protected setupValidations() {
-    this.validations
-      .of(
-        "transactionType",
-        /* tslint:disable:trailing-comma */
-        TransactionType.Capture |
-          TransactionType.Edit |
-          TransactionType.Hold |
-          TransactionType.Release,
-        /* tslint:enable:trailing-comma */
-      )
-      .check("transactionId")
-      .isNotNull();
-
-    this.validations
-      .of("transactionType", TransactionType.Edit)
-      .with("transactionModifier", TransactionModifier.LevelII)
-      .check("taxType")
-      .isNotNull();
-
-    this.validations
-      .of("transactionType", TransactionType.Refund)
-      .when("amount")
-      .isNotNull()
-      .check("currency")
-      .isNotNull();
   }
 
   /**
@@ -94,7 +81,7 @@ export class ManagementBuilder extends TransactionBuilder<Transaction> {
    * @param amount The amount
    * @returns ManagementBuilder
    */
-  public withAmount(amount?: string | number) {
+  public withAmount(amount?: string | number | null) {
     if (amount !== undefined) {
       this.amount = amount;
     }
@@ -130,6 +117,15 @@ export class ManagementBuilder extends TransactionBuilder<Transaction> {
     return this;
   }
 
+  public withCommercialData(cd: CommercialData) {
+    this.commercialData = cd;
+    this.transactionModifier =
+      cd.commercialIndicator === TransactionModifier.LevelII
+        ? TransactionModifier.LevelII
+        : TransactionModifier.LevelIII;
+    return this;
+  }
+
   /**
    * Sets the transaction's description.
    *
@@ -155,7 +151,7 @@ export class ManagementBuilder extends TransactionBuilder<Transaction> {
    * @param gratuity The gratuity amount
    * @returns ManagementBuilder
    */
-  public withGratuity(gratuity?: string | number) {
+  public withGratuity(gratuity: string | number | null = null) {
     if (gratuity !== undefined) {
       this.gratuity = gratuity;
     }
@@ -220,6 +216,140 @@ export class ManagementBuilder extends TransactionBuilder<Transaction> {
     if (type !== undefined) {
       this.taxType = type;
     }
+    return this;
+  }
+
+  public withDynamicDescriptor(dynamicDescriptor: string) {
+    this.dynamicDescriptor = dynamicDescriptor;
+
+    return this;
+  }
+
+  /**
+   * Sets the idempotency key
+   *
+   * @param idempotencyKey string
+   * @returns {this}
+   */
+  public withIdempotencyKey(idempotencyKey: string) {
+    this.idempotencyKey = idempotencyKey;
+
+    return this;
+  }
+
+  /**
+   * Sets the idempotency key
+   *
+   * @param idempotencyKey string
+   * @returns {this}
+   */
+  public withPaymentMethodUsageMode(
+    paymentMethodUsageMode: PaymentMethodUsageMode,
+  ) {
+    this.paymentMethodUsageMode = paymentMethodUsageMode;
+
+    return this;
+  }
+
+  public withMultiCapture(
+    sequence: StoredCredentialSequence = StoredCredentialSequence.FIRST,
+    paymentCount: number = 1,
+  ) {
+    this.multiCapture = true;
+    this.multiCaptureSequence = sequence;
+    this.multiCapturePaymentCount = paymentCount;
+
+    return this;
+  }
+
+  public withTagData(tagData: string) {
+    this.tagData = tagData;
+    return this;
+  }
+
+  public withLodgingData(value: LodgingData) {
+    this.lodgingData = value;
+
+    return this;
+  }
+
+  /**
+   * Sets the Dispute Id.
+   *
+   * @param string value
+   *
+   * @return $this
+   */
+  public withDisputeId(value: string) {
+    this.disputeId = value;
+    return this;
+  }
+
+  /**
+   * Sets the Dispute Documents.
+   *
+   * @param DisputeDocument[] $value
+   *
+   * @return $this
+   */
+  public withDisputeDocuments(value: DisputeDocument[]) {
+    this.disputeDocuments = value;
+    return this;
+  }
+
+  protected setupValidations() {
+    this.validations
+      .of(
+        "transactionType",
+        /* tslint:disable:trailing-comma */
+        TransactionType.Capture |
+          TransactionType.Edit |
+          TransactionType.Hold |
+          TransactionType.Release,
+        /* tslint:enable:trailing-comma */
+      )
+      .check("transactionId")
+      .isNotNull();
+
+    this.validations
+      .of("transactionType", TransactionType.Edit)
+      .with("transactionModifier", TransactionModifier.LevelII)
+      .check("taxType")
+      .isNotNull();
+
+    this.validations
+      .of("transactionType", TransactionType.Refund)
+      .when("amount")
+      .isNotNull()
+      .check("currency")
+      .isNotNull();
+  }
+
+  /**
+   * Previous request's transaction reference
+   *
+   * @internal
+   * @param IPaymentMethod $paymentMethod Transaction reference
+   *
+   * @return ManagementBuilder
+   */
+  public withPaymentMethod(
+    paymentMethod: PaymentMethod | TransactionReference,
+  ): ManagementBuilder {
+    this.paymentMethod = paymentMethod;
+    return this;
+  }
+
+  /**
+   * Set the request dccRateData
+   *
+   * @param DccRateData dccRateData
+   *
+   * @return AuthorizationBuilder
+   */
+  public withDccRateData(value: DccRateData) {
+    this.dccRateData = value;
+
     return this;
   }
 }

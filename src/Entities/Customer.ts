@@ -1,4 +1,9 @@
-import { Address, IPaymentMethod, RecurringPaymentMethod } from "../";
+import {
+  Address,
+  IPaymentMethod,
+  PhoneNumber,
+  RecurringPaymentMethod,
+} from "../";
 import { RecurringEntity } from "./RecurringEntity";
 
 export class Customer extends RecurringEntity<Customer> {
@@ -22,6 +27,13 @@ export class Customer extends RecurringEntity<Customer> {
    */
   public company: string;
 
+  public dateOfBirth: string;
+
+  /**
+   * Customer's device finger print
+   */
+  public deviceFingerPrint: string;
+
   /**
    * Customer's address
    */
@@ -30,7 +42,7 @@ export class Customer extends RecurringEntity<Customer> {
   /**
    * Customer's home phone number
    */
-  public homePhone: string;
+  public homePhone: string | PhoneNumber;
 
   /**
    * Customer's work phone number
@@ -45,7 +57,7 @@ export class Customer extends RecurringEntity<Customer> {
   /**
    * Customer's mobile phone number
    */
-  public mobilePhone: string;
+  public mobilePhone: string | PhoneNumber;
 
   /**
    * Customer's email address
@@ -67,6 +79,16 @@ export class Customer extends RecurringEntity<Customer> {
    */
   public status: string;
 
+  /**
+   * Customer's existing payment methods
+   */
+  public paymentMethods: Array<RecurringPaymentMethod>;
+
+  public constructor() {
+    super();
+    this.paymentMethods = new Array<RecurringPaymentMethod>();
+    this.address = new Address();
+  }
   /**
    * Adds a payment method to the customer
    *

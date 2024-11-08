@@ -1,14 +1,27 @@
 import {
-  AuthorizationBuilder,
+  AlternativePaymentResponse,
+  Card,
+  CardIssuerResponse,
+  DccRateData,
   GiftCard,
   ManagementBuilder,
+  PayerDetails,
   PaymentMethodType,
+  PaymentMethodUsageMode,
+  StoredCredentialSequence,
+  ThreeDSecure,
   TransactionModifier,
   TransactionReference,
   TransactionType,
 } from "../";
+import { PayFacResponseData } from "./ProFac/PayFacResponseData";
+
 export class Transaction {
   public authorizedAmount: string;
+  /**
+   * The address verification service (AVS) address response code.
+   */
+  public avsAddressResponse: string;
   public balanceAmount: string;
   public pointsBalanceAmount: string;
   public cardBrandTransactionId: string;
@@ -21,6 +34,9 @@ export class Transaction {
   public cvnResponseMessage: string;
   public cvnResponseCode: string;
   public cavvResponseCode: string;
+  public multiCapture: boolean;
+  public multiCapturePaymentCount: number;
+  public multiCaptureSequence: StoredCredentialSequence;
   public cardLast4: string;
   public cardType: string;
   public avsResponseMessage: string;
@@ -29,13 +45,82 @@ export class Transaction {
   public transactionReference: TransactionReference;
   public token: string;
   public giftCard: GiftCard;
+  public dccRateData: DccRateData;
   public clientTransactionId: string;
   public timestamp: string;
   public batchId: string;
   public batchSeqNbr: string;
+  public payFacData: PayFacResponseData;
+  public payerDetails: PayerDetails;
+  public fingerprint: string;
+  public fingerprintIndicator: string;
+  public tokenUsageMode: PaymentMethodUsageMode;
+  public cardDetails: Card;
+  public threeDSecure: ThreeDSecure;
+
+  /**
+   * Used for ACH transactions
+   */
+  public accountNumberLast4: string;
+  public accountType: string;
+
+  public cardIssuerResponse: CardIssuerResponse;
 
   get transactionId(): string {
-    return this.transactionReference.transactionId;
+    return this.transactionReference?.transactionId;
+  }
+
+  set transactionId(id: string) {
+    if (!this.transactionReference) {
+      this.transactionReference = new TransactionReference();
+    }
+    this.transactionReference.transactionId = id;
+  }
+
+  get paymentMethodType(): PaymentMethodType {
+    if (this.transactionReference) {
+      return this.transactionReference.paymentMethodType;
+    }
+
+    return PaymentMethodType.Credit;
+  }
+
+  set paymentMethodType(paymentMethodType: PaymentMethodType) {
+    if (!(this.transactionReference instanceof TransactionReference)) {
+      this.transactionReference = new TransactionReference();
+    }
+
+    this.transactionReference.paymentMethodType = paymentMethodType;
+  }
+
+  get authorizationCode(): string | null {
+    if (this.transactionReference) {
+      return this.transactionReference.authCode;
+    }
+
+    return null;
+  }
+
+  get alternativePaymentResponse(): AlternativePaymentResponse | null {
+    if (this.transactionReference) {
+      return this.transactionReference.alternativePaymentResponse;
+    }
+    return null;
+  }
+
+  set alternativePaymentResponse(value: AlternativePaymentResponse) {
+    if (!(this.transactionReference instanceof TransactionReference)) {
+      this.transactionReference = new TransactionReference();
+    }
+    this.transactionReference.alternativePaymentResponse = value;
+  }
+
+  set authorizationCode(authCode: string) {
+    if (!(this.transactionReference instanceof TransactionReference)) {
+      this.transactionReference = new TransactionReference();
+    }
+
+    this.transactionReference.authCode = authCode;
   }
 
   public static fromId(
@@ -69,10 +154,9 @@ export class Transaction {
    * @return AuthorizationBuilder
    */
   public additionalAuth(amount?: string | number) {
-    return new AuthorizationBuilder(TransactionType.Auth)
+    return new ManagementBuilder(TransactionType.Auth)
       .withPaymentMethod(this.transactionReference)
-      .withAmount(amount)
-      .withModifier(TransactionModifier.Additional);
+      .withAmount(amount);
   }
 
   /**
@@ -83,9 +167,18 @@ export class Transaction {
    * @return ManagementBuilder
    */
   public capture(amount?: string | number) {
-    return new ManagementBuilder(TransactionType.Capture)
+    const builder = new ManagementBuilder(TransactionType.Capture)
       .withPaymentMethod(this.transactionReference)
       .withAmount(amount);
+
+    if (this.multiCapture) {
+      builder.withMultiCapture(
+        this.multiCaptureSequence,
+        this.multiCapturePaymentCount,
+      );
+    }
+
+    return builder;
   }
 
   /**
@@ -101,7 +194,9 @@ export class Transaction {
     if (this.commercialIndicator) {
       builder = builder.withModifier(TransactionModifier.LevelII);
     }
-
+    if (this.cardType) {
+      builder.cardType = this.cardType;
+    }
     return builder;
   }
 
@@ -114,11 +209,11 @@ export class Transaction {
   /**
    * Allows for a follow-up request to refund the transaction
    *
-   * @param string|number amount Amount to refund
+   * @param {string|number} amount Amount to refund
    *
    * @return ManagementBuilder
    */
-  public refund(amount?: string | number) {
+  public refund(amount: string | number | null = null) {
     return new ManagementBuilder(TransactionType.Refund)
       .withPaymentMethod(this.transactionReference)
       .withAmount(amount);
@@ -131,13 +226,27 @@ export class Transaction {
   }
 
   /**
+   * Refresh the authorization associated with a transaction to get a more recent authcode or
+   * reauthorize a transaction reversed in error.
+   *
+   * @param {string|number|null} amount Amount to reverse
+   *
+   * @return ManagementBuilder
+   */
+  public reauthorized(amount: string | number | null = null) {
+    return new ManagementBuilder(TransactionType.Reauth)
+      .withPaymentMethod(this.transactionReference)
+      .withAmount(amount);
+  }
+
+  /**
    * Allows for a follow-up request to reverse the transaction
    *
    * @param string|number amount Amount to reverse
    *
    * @return ManagementBuilder
    */
-  public reverse(amount?: string | number) {
+  public reverse(amount: string | number | null = null) {
     return new ManagementBuilder(TransactionType.Reversal)
       .withPaymentMethod(this.transactionReference)
       .withAmount(amount);
@@ -152,5 +261,11 @@ export class Transaction {
     return new ManagementBuilder(TransactionType.Void).withPaymentMethod(
       this.transactionReference,
     );
+  }
+
+  public confirm(amount?: string | number | null) {
+    return new ManagementBuilder(TransactionType.Confirm)
+      .withPaymentMethod(this.transactionReference)
+      .withAmount(amount);
   }
 }

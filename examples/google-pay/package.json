@@ -5,15 +5,14 @@
   "license": "GPL-2.0",
   "scripts": {
     "deploy": "now",
-    "develop": "micro-dev",
+    "develop": "micro",
     "start": "micro"
   },
   "dependencies": {
-    "globalpayments-api": "^1.2",
+    "globalpayments-api": "^3.3.0",
     "micro": "^9.3.4"
   },
   "devDependencies": {
-    "micro-dev": "^2.2.2",
     "now": "^9.3.3"
   }
 }

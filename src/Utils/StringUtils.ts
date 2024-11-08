@@ -1,3 +1,5 @@
+import { ArgumentError } from "../../src";
+
 export class StringUtils {
   public static leftPad(
     source: string,
@@ -51,5 +53,60 @@ export class StringUtils {
     }
 
     return new Buffer(t, "base64").toString("ascii");
+  }
+
+  /**
+   * Strip all non-numeric characters
+   *
+   * @param value - The input string
+   * @returns The string with non-numeric characters removed
+   */
+  public static validateToNumber(value: string): string {
+    return value.replace(/[^0-9]/g, "");
+  }
+
+  static toAmount(str: string | null | undefined): string {
+    if (!str) {
+      return "0";
+    }
+
+    return (parseFloat(str) / 100).toString();
+  }
+
+  static toNumeric(value: string | null): string {
+    if (value === null) {
+      return "";
+    }
+
+    if (String(value) === "0") {
+      return "000";
+    }
+
+    if (isNaN(parseFloat(value)) && !isFinite(parseFloat(value))) {
+      throw new ArgumentError("A non well formed numeric value encountered!");
+    }
+
+    const f = parseFloat(value.toString()) * 100;
+    if (0 < Number(value) && Number(value) < 1) {
+      return "0" + parseFloat(f.toFixed(2)).toString();
+    }
+    return parseFloat(f.toFixed(2)).toString();
+  }
+
+  static boolToString(value: boolean): string | undefined {
+    if (typeof value !== "boolean") {
+      return;
+    }
+
+    return JSON.stringify(value);
+  }
+
+  public static isJson(string: string): boolean {
+    try {
+      JSON.parse(string);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }

@@ -14,13 +14,16 @@ import {
 } from "./Interfaces";
 import { PaymentMethod } from "./PaymentMethod";
 
-export abstract class Debit extends PaymentMethod
-  implements IChargable,
+export abstract class Debit
+  extends PaymentMethod
+  implements
+    IChargable,
     IEncryptable,
     IRefundable,
     IReversable,
     IPrePayable,
-    IPinProtected {
+    IPinProtected
+{
   public encryptionData: EncryptionData;
   public paymentMethodType: PaymentMethodType = PaymentMethodType.Debit;
   public pinBlock: string;
@@ -75,5 +78,17 @@ export abstract class Debit extends PaymentMethod
     return new AuthorizationBuilder(TransactionType.Reversal, this).withAmount(
       amount,
     );
+  }
+  /**
+   * Authorizes the payment method
+   *
+   * @param string|number amount Amount to reverse
+   *
+   * @return AuthorizationBuilder
+   */
+  public authorize(amount?: string | number) {
+    return new AuthorizationBuilder(TransactionType.Auth, this)
+      .withAmount(amount)
+      .withAmountEstimated(true);
   }
 }

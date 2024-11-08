@@ -1,9 +1,10 @@
+import { GpEcomConfig } from "../../src/ServiceConfigs";
+
 import {
   ApiError,
   AuthorizationBuilder,
   GenerationUtils,
   PaymentMethodType,
-  ServicesConfig,
   ServicesContainer,
   StringUtils,
   Transaction,
@@ -12,11 +13,11 @@ import {
 } from "../";
 
 export class HostedService {
-  protected config: ServicesConfig;
+  protected config: GpEcomConfig;
 
-  constructor(config: ServicesConfig) {
+  constructor(config: GpEcomConfig, configName: string = "default") {
     this.config = config;
-    ServicesContainer.configure(config);
+    ServicesContainer.configureService(config, configName);
   }
 
   public authorize(amount?: number | string) {

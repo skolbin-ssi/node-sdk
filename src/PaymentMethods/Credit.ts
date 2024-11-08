@@ -1,8 +1,16 @@
 import {
   AuthorizationBuilder,
+  BuilderError,
+  DccProcessor,
+  DccRateData,
+  DccRateType,
   EncryptionData,
   InquiryType,
+  ManagementBuilder,
   PaymentMethodType,
+  PaymentMethodUsageMode,
+  ThreeDSecure,
+  Transaction,
   TransactionType,
 } from "../";
 import {
@@ -13,13 +21,16 @@ import {
   IPrePayable,
   IRefundable,
   IReversable,
+  ISecure3d,
   ITokenizable,
   IVerifyable,
 } from "./Interfaces";
 import { PaymentMethod } from "./PaymentMethod";
 
-export abstract class Credit extends PaymentMethod
-  implements IEncryptable,
+export abstract class Credit
+  extends PaymentMethod
+  implements
+    IEncryptable,
     ITokenizable,
     IChargable,
     IAuthable,
@@ -27,7 +38,9 @@ export abstract class Credit extends PaymentMethod
     IReversable,
     IVerifyable,
     IPrePayable,
-    IBalanceable {
+    IBalanceable,
+    ISecure3d
+{
   public encryptionData: EncryptionData;
   public paymentMethodType = PaymentMethodType.Credit;
 
@@ -50,6 +63,8 @@ export abstract class Credit extends PaymentMethod
   public paymentSource: string;
   public cryptogram: string;
   public eci: string;
+
+  public threeDSecure: ThreeDSecure;
 
   /**
    * Authorizes the payment method
@@ -144,7 +159,98 @@ export abstract class Credit extends PaymentMethod
    *
    * @return AuthorizationBuilder
    */
-  public tokenize() {
-    return this.verify().withRequestMultiUseToken(true);
+  public tokenize(
+    verifyCard: boolean = true,
+    usageMode: PaymentMethodUsageMode = PaymentMethodUsageMode.MULTIPLE,
+  ) {
+    if (verifyCard !== false) {
+      verifyCard = true;
+    }
+    const type = verifyCard ? TransactionType.Verify : TransactionType.Tokenize;
+
+    return new AuthorizationBuilder(type, this)
+      .withRequestMultiUseToken(true)
+      .withPaymentMethodUsageMode(usageMode);
+  }
+
+  /**
+   * Updates the token expiry date with the values proced to the card object
+   *
+   * @returns boolean value indicating success/failure
+   */
+  public async updateTokenExpiry(): Promise<boolean> {
+    if (!this.token) {
+      throw new BuilderError("Token cannot be null");
+    }
+
+    await new ManagementBuilder(TransactionType.TokenUpdate)
+      .withPaymentMethod(this)
+      .execute();
+
+    return true;
+  }
+
+  /**
+   * Updates the payment token
+   *
+   * @returns ManagementBuilder
+   */
+  public updateToken(): ManagementBuilder {
+    if (!this.token) {
+      throw new BuilderError("Token cannot be null");
+    }
+
+    return new ManagementBuilder(TransactionType.TokenUpdate).withPaymentMethod(
+      this,
+    );
+  }
+
+  /**
+   * Deletes the token associated with the current card object
+   *
+   * @returns boolean value indicating success/failure
+   */
+  public async deleteToken(): Promise<boolean> {
+    if (!this.token) {
+      throw new BuilderError("Token cannot be null");
+    }
+
+    await new ManagementBuilder(TransactionType.TokenDelete)
+      .withPaymentMethod(this)
+      .execute();
+
+    return true;
+  }
+
+  /**
+   * Detokenizes the payment method
+   *
+   * @returns result of the detokenization
+   */
+  public async detokenize(): Promise<Transaction> {
+    if (!this.token) {
+      throw new BuilderError("Token cannot be null or empty");
+    }
+
+    return await new ManagementBuilder(
+      TransactionType.Detokenize,
+      this,
+    ).execute();
+  }
+
+  public getDccRate(dccRateType?: DccRateType, ccp?: DccProcessor) {
+    const authBuilder = new AuthorizationBuilder(
+      TransactionType.DccRateLookup,
+      this,
+    );
+
+    if (dccRateType || ccp) {
+      const dccRateData = new DccRateData();
+      if (ccp) dccRateData.dccProcessor = ccp;
+      if (dccRateType) dccRateData.dccRateType = dccRateType;
+      authBuilder.withDccRateData(dccRateData);
+    }
+
+    return authBuilder;
   }
 }
